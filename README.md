@@ -55,6 +55,7 @@ pi --model command-code/claude-sonnet-5:high   # with a thinking level
 | `CMD_API_KEY` | API key, if you would rather not store it with `/login`. `COMMAND_CODE_API_KEY` also works. |
 | `CMD_ZDR` | `1` enforces zero-data-retention routing. |
 | `CMD_MODELS_URL` | Overrides the models endpoint, for staging or a proxy. |
+| `CMD_GENERATE_BASE_URL` | Overrides the `/alpha/generate` base, for tests or mocks. Defaults to `https://api.commandcode.ai`. |
 
 ## Zero data retention
 
@@ -65,6 +66,20 @@ CMD_ZDR=1 pi
 Adds `x-cmd-zdr: 1` to every request, the same opt-in the Command Code CLI has. The gateway then routes only through zero-data-retention upstreams.
 
 99% of Command Code models have one, and most run that way already without the flag. Coverage for a new model can lag, because provider agreements renew monthly. With the flag set and no zero-data-retention upstream available, the request fails with a 422 and `cmd_zdr_no_providers` instead of routing through a provider that retains data. Enforcing it can change which upstream serves a request, so it may cost more. See the [ZDR docs](https://commandcode.ai/docs/resources/zdr).
+
+## Go plan fallback (private fork)
+
+The official Provider API is tried first. On a 403 with `error.code` `upgrade_required`, the router switches to the CLI-style transport (`POST /alpha/generate`).
+
+The chosen transport is remembered per key, and changing the key resets it. The catalog always comes from the official loader; there is no static catalog.
+
+When a thinking level is selected on a reasoning model, `reasoning_effort` is sent verbatim.
+
+Transport ported from `patlux/pi-commandcode-provider` v0.7.1 (commit `6fd0ac7`), for strictly private use.
+
+## Private fork
+
+Private fork. No npm publication, no upstream PR.
 
 <details>
 <summary>Other ways to install</summary>
@@ -138,13 +153,13 @@ If the models endpoint is unreachable at startup, no models are registered and p
 <summary>Development</summary>
 
 ```bash
-npm install
-npm run check                                  # typecheck
-npm test                                       # deterministic routing checks
-npm run test:live                              # live catalog, no key needed
-CMD_API_KEY=... npm run test:live               # one model per API
-CMD_API_KEY=... npm run test:live -- --all       # the whole live catalog
-CMD_API_KEY=... npm run test:live -- --reasoning high claude-sonnet-5
+bun install
+bun run check                                # typecheck
+bun test.ts                                    # deterministic routing checks
+bun run test:live                            # live catalog, no key needed
+CMD_API_KEY=... bun run test:live             # one model per API
+CMD_API_KEY=... bun run test:live -- --all     # the whole live catalog
+CMD_API_KEY=... bun run test:live -- --reasoning high claude-sonnet-5
 ```
 
 Nothing to regenerate. The catalog is whatever `/provider/v1/models` returns at startup.
