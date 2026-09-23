@@ -13,7 +13,7 @@ The official [Command Code](https://commandcode.ai) provider for [pi](https://gi
 - **pi 0.86 or newer.** Check with `pi --version`.
 
 ```bash
-pi install npm:@commandcode/pi-commandcode-provider
+pi install git:git@github.com:Sokoshy/pi-commandcode-provider
 ```
 
 Start pi, then run these two at its prompt:
@@ -84,28 +84,22 @@ Private fork. No npm publication, no upstream PR.
 <details>
 <summary>Other ways to install</summary>
 
-`pi list` shows what is installed. `pi remove npm:@commandcode/pi-commandcode-provider` undoes it, and `pi update npm:@commandcode/pi-commandcode-provider` pulls a newer release. The source string has to match the one you installed.
+`pi list` shows what is installed. `pi remove git:git@github.com:Sokoshy/pi-commandcode-provider` undoes it, and `pi update git:git@github.com:Sokoshy/pi-commandcode-provider` pulls a newer release. The source string has to match the one you installed.
 
-From git, to run `init` ahead of the latest npm release:
+The repo is private and not on npm, so install from git over SSH (your GitHub key must be on the account; HTTPS would prompt for credentials). The `git:` prefix tells pi the rest is a git URL, not a path.
 
-```bash
-pi install https://github.com/CommandCodeAI/pi-commandcode-provider
-```
-
-Over SSH, when your GitHub key is on the account and HTTPS would prompt for credentials. The `git:` prefix tells pi the rest is a git URL, not a path:
+From a local checkout, to develop or test an unreleased change:
 
 ```bash
-pi install git:git@github.com:CommandCodeAI/pi-commandcode-provider
-```
-
-From a local checkout, to run a fork or an unreleased change:
-
-```bash
-git clone https://github.com/CommandCodeAI/pi-commandcode-provider
+git clone git@github.com:Sokoshy/pi-commandcode-provider.git
 pi install ./pi-commandcode-provider
 ```
 
-pi records that path without copying the files, so edits apply on the next `pi` launch with no reinstall. Moving or deleting the directory breaks the extension until you run `pi remove ./pi-commandcode-provider`.
+pi records that path without copying the files, so edits apply on the next `pi` launch with no reinstall. Moving or deleting the directory breaks the extension until you run `pi remove ./pi-commandcode-provider`. For a one-off session with no install at all, load the entry directly:
+
+```bash
+pi --extension ./pi-commandcode-provider/index.ts
+```
 
 </details>
 
