@@ -6,9 +6,7 @@ The official [Command Code](https://commandcode.ai) provider for [pi](https://gi
 
 ### Prerequisites
 
-- **A Command Code GOAT plan or higher is required.** API access is only included with GOAT and higher-tier plans. An active subscription to one of these plans is required to use this provider. See [pricing](https://commandcode.ai/pricing) for details.
-
-  The **$1 Go plan is exclusively for use with the Command Code CLI**. Go plan credentials are not authorized for use with this provider or any external tool.
+- **Any Command Code plan with credits works, including the $1 Go plan.** Plans with Provider API access (GOAT and higher) use the native Provider API. Go keys are served through the CLI-style fallback transport instead (see [Go plan fallback](#go-plan-fallback-private-fork)). See [pricing](https://commandcode.ai/pricing) for details.
 
 - **pi 0.86 or newer.** Check with `pi --version`.
 
