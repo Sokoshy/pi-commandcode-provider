@@ -21,18 +21,27 @@
 import {
 	createProvider,
 	envApiKeyAuth,
+	createAssistantMessageEventStream,
 	type Api,
+	type AssistantMessageEventStream,
 	type Model,
 	type Provider,
 	type ProviderEnv,
+	type ProviderStreams,
+	type SimpleStreamOptions,
+	type TranscriptContext,
 } from "@earendil-works/pi-ai";
-// pi resolves bundled pi-ai imports for installed extensions by name, and only
 // the root, /compat, /oauth and /providers/all are mapped. The /api/*.lazy
 // subpaths are not, so they fail to load from an npm install. /compat
 // re-exports the same lazy factories.
 import { anthropicMessagesApi, openAICompletionsApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
+// Go fallback transport (private fork): ported from patlux/pi-commandcode-provider
+// v0.7.1 (commit 6fd0ac7). Only the router, the /alpha/generate stream and
+// the converters are imported; the official catalog above stays untouched.
+import { createGoGenerateStream, GO_GENERATE_API_BASE } from "./src/go-generate.ts";
+import { normalizeCommandCodeMessage } from "./src/go-overflow.ts";
+import { createCommandCodeTransportRouter } from "./src/go-router.ts";
 const PROVIDER_ID = "command-code";
 const PROVIDER_NAME = "Command Code";
 // The Anthropic SDK appends /v1/messages to the base URL. The OpenAI SDKs
@@ -45,7 +54,7 @@ const MODELS_TIMEOUT_MS = 10_000;
 const ZDR_HEADER = "x-cmd-zdr";
 const ZDR_ENV = "CMD_ZDR";
 const MODELS_URL_ENV = "CMD_MODELS_URL";
-
+const GENERATE_BASE_URL_ENV = "CMD_GENERATE_BASE_URL";
 const NO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const FALLBACK_MAX_TOKENS = 32_768;
 const FALLBACK_CONTEXT_WINDOW = 131_072;
@@ -149,20 +158,82 @@ export async function loadModels(url = MODELS_URL, signal?: AbortSignal): Promis
 }
 
 export function commandCodeProvider(models: Model<Api>[]): Provider<Api> {
+	// Native Provider API implementations, one per route reported by /models.
+	const nativeApis = {
+		"anthropic-messages": anthropicMessagesApi(),
+		"openai-completions": openAICompletionsApi(),
+		"openai-responses": openAIResponsesApi(),
+	};
+	// CLI-style fallback for Go keys, which the Provider API refuses with
+	// 403 upgrade_required (see https://commandcode.ai/docs/provider).
+	const streamGenerate = createGoGenerateStream({
+		apiBase: envValue(GENERATE_BASE_URL_ENV) ?? GO_GENERATE_API_BASE,
+	});
+	const streamProvider = (
+		model: Model<Api>,
+		context: TranscriptContext,
+		options?: SimpleStreamOptions,
+	): AssistantMessageEventStream => {
+		const native = (nativeApis as Record<string, ProviderStreams | undefined>)[model.api];
+		if (!native) {
+			const stream = createAssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "error",
+					reason: "error",
+					error: {
+						role: "assistant",
+						content: [],
+						api: model.api,
+						provider: model.provider,
+						model: model.id,
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "error",
+						errorMessage: `Command Code: no provider route for api "${model.api}" (model ${model.id}).`,
+						timestamp: Date.now(),
+					},
+				});
+				stream.end();
+			});
+			return stream;
+		}
+		// Both entry points delegate to the native streamSimple implementations:
+		// that is the path the official extension used for every request, and
+		// the router only observes the response status around it.
+		return native.streamSimple(model, context, options);
+	};
+	const router = createCommandCodeTransportRouter({
+		createStream: () => createAssistantMessageEventStream(),
+		streamProvider,
+		streamGenerate,
+	});
 	return createProvider<Api>({
 		id: PROVIDER_ID,
 		name: PROVIDER_NAME,
 		auth: { apiKey: envApiKeyAuth("Command Code API key", ["CMD_API_KEY", "COMMAND_CODE_API_KEY"]) },
 		models,
 		api: {
-			"anthropic-messages": anthropicMessagesApi(),
-			"openai-completions": openAICompletionsApi(),
-			"openai-responses": openAIResponsesApi(),
+			stream: router.stream,
+			streamSimple: router.streamSimple,
 		},
 	});
 }
 
 export default async function activate(pi: ExtensionAPI): Promise<void> {
+	// Normalize this provider's context-overflow errors so pi can compact and
+	// retry them like any other provider overflow. Other failures pass through.
+	pi.on("message_end", async (event, ctx) => {
+		if (event.message.role !== "assistant") return undefined;
+		const normalized = normalizeCommandCodeMessage(event.message, ctx.model?.provider);
+		return normalized ? { message: normalized.message } : undefined;
+	});
 	try {
 		pi.registerProvider(commandCodeProvider(await loadModels(envValue(MODELS_URL_ENV) ?? MODELS_URL)));
 	} catch (error) {
