@@ -1,4 +1,7 @@
 /**
+ *
+ * Copyright (c) 2025 Pat Woz, MIT License (permission notice in NOTICE).
+ * Adapted in 2026 by Sokoshy for this unofficial fork.
  * JSON-schema normalization for tool parameters sent to /alpha/generate.
  *
  * Ported from patlux/pi-commandcode-provider v0.7.1 (commit 6fd0ac7)

@@ -1,11 +1,14 @@
 /**
+ *
+ * Copyright (c) 2025 Pat Woz, MIT License (permission notice in NOTICE).
+ * Adapted in 2026 by Sokoshy for this unofficial fork.
  * Command Code /alpha/generate transport for Go keys.
  *
  * Ported from patlux/pi-commandcode-provider v0.7.1 (commit 6fd0ac7)
  * src/core.ts, adapted from the generic ModelLike/ContextLike shapes to the
  * pi native types (Model<Api>, TranscriptContext, SimpleStreamOptions).
  *
- * The official loader and Provider API path in index.ts stay untouched: this
+ * The upstream loader and Provider API path in index.ts stay untouched: this
  * module only speaks the CLI-style generate endpoint used as a fallback when
  * the Provider API answers 403 upgrade_required. See src/go-router.ts.
  *

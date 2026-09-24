@@ -1,5 +1,8 @@
 /**
- * Transport router: try the official Provider API first, fall back to the
+ *
+ * Copyright (c) 2025 Pat Woz, MIT License (permission notice in NOTICE).
+ * Adapted in 2026 by Sokoshy for this unofficial fork.
+ * Transport router: try the Command Code Provider API first, fall back to the
  * CLI-style generate transport on Go keys.
  *
  * Ported from patlux/pi-commandcode-provider v0.7.1 (commit 6fd0ac7)

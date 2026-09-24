@@ -1,4 +1,8 @@
 /**
+ * Modified in 2026 by Sokoshy: added the mocked routing and generate-transport
+ * suite. Originally Copyright 2026 Command Code, Apache License 2.0 — see the
+ * LICENSE and NOTICE files.
+ *
  * Deterministic model-mapping, Go-fallback routing and generate-transport
  * tests, plus an optional live check against the Command Code API.
  *

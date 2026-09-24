@@ -1,4 +1,6 @@
 {
+	// Modified in 2026 by Sokoshy: added src/**/*.ts to the include list.
+	// Originally Copyright 2026 Command Code, Apache License 2.0 — see LICENSE and NOTICE.
 	"compilerOptions": {
 		"target": "es2023",
 		"lib": ["es2023"],
