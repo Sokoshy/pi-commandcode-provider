@@ -1,6 +1,10 @@
 /**
- * Official Command Code provider for pi. Requires pi 0.86 or newer for the
- * stable native-provider exports used below.
+ * Modified in 2026 by Sokoshy: added the Go-plan fallback transport and its
+ * router. Originally Copyright 2026 Command Code, Apache License 2.0 —
+ * see the LICENSE and NOTICE files.
+ *
+ * Unofficial fork of the Command Code provider for pi. Requires pi 0.86 or
+ * newer for the stable native-provider exports used below.
  *
  * The model list and the route for each model come from
  * https://api.commandcode.ai/provider/v1/models at startup. No part of the
@@ -14,7 +18,7 @@
  * gap on its own. See https://commandcode.ai/models for the real prices.
  *
  * Usage:
- *   pi install https://github.com/CommandCodeAI/pi-commandcode-provider
+ *   pi install git:git@github.com:Sokoshy/pi-commandcode-provider
  *   # then /login command-code, or set CMD_API_KEY=...
  */
 
@@ -36,14 +40,14 @@ import {
 // re-exports the same lazy factories.
 import { anthropicMessagesApi, openAICompletionsApi, openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-// Go fallback transport (private fork): ported from patlux/pi-commandcode-provider
+// Go fallback transport: ported from patlux/pi-commandcode-provider
 // v0.7.1 (commit 6fd0ac7). Only the router, the /alpha/generate stream and
-// the converters are imported; the official catalog above stays untouched.
+// the converters are imported; the upstream catalog above stays untouched.
 import { createGoGenerateStream, GO_GENERATE_API_BASE } from "./src/go-generate.ts";
 import { normalizeCommandCodeMessage } from "./src/go-overflow.ts";
 import { createCommandCodeTransportRouter } from "./src/go-router.ts";
 const PROVIDER_ID = "command-code";
-const PROVIDER_NAME = "Command Code";
+const PROVIDER_NAME = "Command Code (unofficial fork)";
 // The Anthropic SDK appends /v1/messages to the base URL. The OpenAI SDKs
 // append /chat/completions and /responses.
 const BASE_URL = "https://api.commandcode.ai/provider";
@@ -205,7 +209,7 @@ export function commandCodeProvider(models: Model<Api>[]): Provider<Api> {
 			return stream;
 		}
 		// Both entry points delegate to the native streamSimple implementations:
-		// that is the path the official extension used for every request, and
+		// that is the path the upstream extension used for every request, and
 		// the router only observes the response status around it.
 		return native.streamSimple(model, context, options);
 	};
