@@ -1,12 +1,12 @@
-# @commandcode/pi-commandcode-provider
+# @sokoshy/pi-commandcode-provider
 
-The official [Command Code](https://commandcode.ai) provider for [pi](https://github.com/earendil-works/pi). One key, every model Command Code serves: Claude, GPT, Gemini, Grok and the open models.
+An unofficial fork of the [Command Code](https://commandcode.ai) provider for [pi](https://github.com/earendil-works/pi). One key, every model Command Code serves: Claude, GPT, Gemini, Grok and the open models. Adds a Go-plan fallback transport so the $1 Go plan works too.
 
 ## Quick start
 
 ### Prerequisites
 
-- **Any Command Code plan with credits works, including the $1 Go plan.** Plans with Provider API access (GOAT and higher) use the native Provider API. Go keys are served through the CLI-style fallback transport instead (see [Go plan fallback](#go-plan-fallback-private-fork)). See [pricing](https://commandcode.ai/pricing) for details.
+- **Any Command Code plan with credits works, including the $1 Go plan.** Plans with Provider API access (GOAT and higher) use the native Provider API. Go keys are served through the CLI-style fallback transport instead (see [Go plan fallback](#go-plan-fallback)). See [pricing](https://commandcode.ai/pricing) for details.
 
 - **pi 0.86 or newer.** Check with `pi --version`.
 
@@ -65,26 +65,30 @@ Adds `x-cmd-zdr: 1` to every request, the same opt-in the Command Code CLI has. 
 
 99% of Command Code models have one, and most run that way already without the flag. Coverage for a new model can lag, because provider agreements renew monthly. With the flag set and no zero-data-retention upstream available, the request fails with a 422 and `cmd_zdr_no_providers` instead of routing through a provider that retains data. Enforcing it can change which upstream serves a request, so it may cost more. See the [ZDR docs](https://commandcode.ai/docs/resources/zdr).
 
-## Go plan fallback (private fork)
+## Go plan fallback
 
-The official Provider API is tried first. On a 403 with `error.code` `upgrade_required`, the router switches to the CLI-style transport (`POST /alpha/generate`).
+The Command Code Provider API is tried first. On a 403 with `error.code` `upgrade_required`, the router switches to the CLI-style transport (`POST /alpha/generate`).
 
-The chosen transport is remembered per key, and changing the key resets it. The catalog always comes from the official loader; there is no static catalog.
+The chosen transport is remembered per key, and changing the key resets it. The catalog always comes from the upstream models endpoint; there is no static catalog.
 
 When a thinking level is selected on a reasoning model, `reasoning_effort` is sent verbatim.
 
-Transport ported from `patlux/pi-commandcode-provider` v0.7.1 (commit `6fd0ac7`), for strictly private use.
+Transport ported from [`patlux/pi-commandcode-provider`](https://github.com/patlux/pi-commandcode-provider) v0.7.1 (commit `6fd0ac7`), Copyright (c) 2025 Pat Woz, MIT License. The full permission notice is in [`NOTICE`](NOTICE).
 
-## Private fork
+## License and attribution
 
-Private fork. No npm publication, no upstream PR.
+Unofficial fork of [`CommandCodeAI/pi-commandcode-provider`](https://github.com/CommandCodeAI/pi-commandcode-provider), Copyright 2026 Command Code, [Apache License 2.0](LICENSE). It is not affiliated with, endorsed by, or supported by Command Code: the name is used only to describe the origin of the work and the service it connects to.
+
+Files changed by this fork carry a change notice as Apache 2.0 section 4(b) requires. [`NOTICE`](NOTICE) lists them and holds the third-party attributions. `src/go-*.ts` are ported from [`patlux/pi-commandcode-provider`](https://github.com/patlux/pi-commandcode-provider) v0.7.1, Copyright (c) 2025 Pat Woz, MIT License.
+
+Not published to npm.
 
 <details>
 <summary>Other ways to install</summary>
 
 `pi list` shows what is installed. `pi remove git:git@github.com:Sokoshy/pi-commandcode-provider` undoes it, and `pi update git:git@github.com:Sokoshy/pi-commandcode-provider` pulls a newer release. The source string has to match the one you installed.
 
-The repo is private and not on npm, so install from git over SSH (your GitHub key must be on the account; HTTPS would prompt for credentials). The `git:` prefix tells pi the rest is a git URL, not a path.
+The package is not published to npm, so install it from git. The `git:` prefix tells pi the rest is a git URL, not a path. SSH needs your GitHub key on the account; HTTPS would prompt for credentials on a private repo.
 
 From a local checkout, to develop or test an unreleased change:
 
