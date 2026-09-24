@@ -1,0 +1,82 @@
+pi-commandcode-provider (unofficial fork)
+=========================================
+
+Copyright 2026 Command Code
+Copyright 2026 Sokoshy
+
+This product is a derivative work of "pi-commandcode-provider" by Command Code
+(https://github.com/CommandCodeAI/pi-commandcode-provider), made available under
+the Apache License, Version 2.0. A copy of that license is in the LICENSE file.
+
+This fork is not affiliated with, endorsed by, or supported by Command Code.
+"Command Code" is used here only to describe the origin of the Work and the
+service it connects to, as permitted by section 6 of the Apache License 2.0.
+
+Upstream attribution
+--------------------
+
+The original Work is Copyright 2026 Command Code, licensed under the Apache
+License, Version 2.0. Its copyright, patent, trademark and attribution notices
+are retained as required by section 4(c) of that license. The upstream project
+ships no NOTICE file of its own.
+
+
+Modified files
+--------------
+
+Changed by Sokoshy in 2026, as required by section 4(b) of the Apache License
+2.0 ("You must cause any modified files to carry prominent notices stating that
+You changed the files"). Individual files also carry a short change notice.
+
+  index.ts       - Go-plan fallback transport, transport router wiring
+  test.ts        - mocked routing and generate-transport test suite
+  tsconfig.json  - added src/**/*.ts to the include list
+  package.json   - renamed the package, pointed metadata at this fork
+                   (JSON cannot carry comments, so this NOTICE is the change
+                   notice for that file)
+  README.md      - rewritten install and usage docs for this fork
+
+  src/go-converters.ts   - new file, see third-party code below
+  src/go-generate.ts     - new file, see third-party code below
+  src/go-json-schema.ts  - new file, see third-party code below
+  src/go-overflow.ts     - new file, see third-party code below
+  src/go-router.ts       - new file, see third-party code below
+
+Unchanged from upstream: .gitignore. bun.lock is a generated dependency lock
+file and carries no notices.
+
+
+Third-party code
+----------------
+
+The files under src/ listed above are ported from
+"patlux/pi-commandcode-provider" v0.7.1 (commit 6fd0ac7),
+https://github.com/patlux/pi-commandcode-provider
+
+That project is Copyright (c) 2025 Pat Woz and is released under the MIT
+License, reproduced in full below as that license requires:
+
+  Copyright (c) 2025 Pat Woz
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+Those files were adapted in 2026 by Sokoshy from generic MessageLike/ContextLike
+shapes to the pi native types. The MIT License continues to apply to that
+patlux-derived code; the rest of this repository remains under the Apache
+License, Version 2.0.
