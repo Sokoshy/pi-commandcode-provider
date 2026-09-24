@@ -1,7 +1,9 @@
 {
-	"name": "@commandcode/pi-commandcode-provider",
-	"version": "0.3.0",
-	"description": "Official Command Code provider for pi: every model behind one key, with the model list read live from the Command Code API",
+	"name": "@sokoshy/pi-commandcode-provider",
+	"version": "0.3.0-fork.1",
+	"description": "Unofficial fork of the Command Code provider for pi: every model behind one key, with the model list read live from the Command Code API, and a Go-plan fallback transport",
+	"author": "Sokoshy",
+	"license": "Apache-2.0",
 	"type": "module",
 	"keywords": [
 		"pi",
@@ -11,13 +13,13 @@
 		"llm",
 		"provider"
 	],
-	"homepage": "https://commandcode.ai",
+	"homepage": "https://github.com/Sokoshy/pi-commandcode-provider",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/CommandCodeAI/pi-commandcode-provider.git"
+		"url": "git+https://github.com/Sokoshy/pi-commandcode-provider.git"
 	},
 	"bugs": {
-		"url": "https://github.com/CommandCodeAI/pi-commandcode-provider/issues"
+		"url": "https://github.com/Sokoshy/pi-commandcode-provider/issues"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -25,7 +27,9 @@
 	"files": [
 		"index.ts",
 		"src/",
-		"README.md"
+		"README.md",
+		"LICENSE",
+		"NOTICE"
 	],
 	"scripts": {
 		"check": "tsc --noEmit",

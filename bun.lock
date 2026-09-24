@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "@commandcode/pi-commandcode-provider",
+      "name": "@sokoshy/pi-commandcode-provider",
       "devDependencies": {
         "@earendil-works/pi-ai": "^0.86.0",
         "@earendil-works/pi-coding-agent": "^0.86.0",
