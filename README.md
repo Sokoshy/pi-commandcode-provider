@@ -11,7 +11,7 @@ An unofficial fork of the [Command Code](https://commandcode.ai) provider for [p
 - **pi 0.86 or newer.** Check with `pi --version`.
 
 ```bash
-pi install git:git@github.com:Sokoshy/pi-commandcode-provider
+pi install git:git@github.com/Sokoshy/pi-commandcode-provider
 ```
 
 Start pi, then run these two at its prompt:
