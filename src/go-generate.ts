@@ -12,11 +12,11 @@
  * module only speaks the CLI-style generate endpoint used as a fallback when
  * the Provider API answers 403 upgrade_required. See src/go-router.ts.
  *
- * Wire contract (pinned against patlux v0.7.1 tests):
+ * Wire contract (pinned against command-code@1.88.1, dist/cli.mjs):
  * - POST {apiBase}/alpha/generate, SSE-ish JSON lines in the response body.
  * - Headers: Authorization Bearer, x-command-code-version, x-cli-environment,
- *   x-project-slug, x-taste-learning, User-Agent, plus x-session-id when a
- *   session id is supplied and any caller/model headers.
+ *   x-cli-surface, x-project-slug, x-taste-learning, User-Agent, plus x-session-id
+ *   when a session id is supplied and any caller/model headers.
  * - Body: { config, memory: null, taste: null, skills: null, params, threadId }.
  * - reasoning_effort is sent only when the caller selects a level other than
  *   off on a reasoning-capable model (verbatim pi level; pi levels match the
@@ -60,9 +60,9 @@ import { commandCodeErrorMessage, redactCommandCodeErrorText } from "./go-overfl
 
 /**
  * CLI version sent as x-command-code-version. Pinned from the
- * patlux v0.7.1 generated catalog (command-code@1.56.0).
+ * official command-code@1.88.1 npm bundle (dist/cli.mjs).
  */
-export const COMMAND_CODE_CLI_VERSION = "1.56.0";
+export const COMMAND_CODE_CLI_VERSION = "1.88.1";
 
 export const GO_GENERATE_API_BASE = "https://api.commandcode.ai";
 
@@ -615,6 +615,7 @@ export function createGoGenerateStream(deps: GoGenerateDeps = {}) {
 					Authorization: `Bearer ${apiKey}`,
 					"x-command-code-version": cliVersion,
 					"x-cli-environment": "production",
+					"x-cli-surface": "cli",
 					"x-project-slug": projectSlugFromPath(workingDir),
 					"x-taste-learning": "true",
 					...(options?.sessionId ? { "x-session-id": options.sessionId } : {}),
