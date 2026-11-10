@@ -35,7 +35,7 @@ import {
 	type ThinkingLevel,
 	type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { commandCodeProvider, loadModels } from "./index.ts";
+import { commandCodeProvider, loadCatalog, loadModels } from "./index.ts";
 import { createCommandCodeTransportRouter } from "./src/go-router.ts";
 import { createGoGenerateStream } from "./src/go-generate.ts";
 import {
@@ -74,12 +74,63 @@ async function testModelMapping(): Promise<void> {
 				max_output_tokens: 8_192,
 			},
 			{ id: "vendor/unsupported", supported_endpoints: ["/unknown"] },
+			{ id: "meta/muse-ember", supported_endpoints: ["/chat/completions", "/responses"], context_length: 1_048_576 },
+			{ id: "gpt-6-sol", supported_endpoints: ["/responses"] },
+			{ id: "moonshotai/Kimi-K2.6", supported_endpoints: ["/chat/completions"], context_length: 262_144 },
+		],
+	};
+	const clientFixture = {
+		data: [
+			{
+				id: "meta/muse-ember",
+				reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+				pricing: { inputCost: 0.1, outputCost: 0.5, cacheReadCost: 0.004 },
+				inputModalities: ["text", "image", "file"],
+				maxOutputTokens: null,
+				behaviorProfile: "private-reasoning-v1",
+				minimumPlan: "individual-go",
+			},
+			{
+				id: "gpt-6-sol",
+				reasoningEfforts: ["off", "high", "max"],
+				pricing: {
+					inputCost: 2,
+					outputCost: 10,
+					cacheReadCost: 0.2,
+					cacheWriteCost: 2.5,
+					contextTiers: [
+						{
+							maxContext: 272_000,
+							rates: { inputCost: 2, outputCost: 10, cacheReadCost: 0.2, cacheWriteCost: 2.5 },
+						},
+						{ rates: { inputCost: 4, outputCost: 15, cacheReadCost: 0.4, cacheWriteCost: 5 } },
+					],
+				},
+				inputModalities: ["text", "image"],
+				maxOutputTokens: null,
+			},
+			{
+				id: "moonshotai/Kimi-K2.6",
+				reasoningEfforts: null,
+				pricing: { inputCost: 1, outputCost: 1, cacheReadCost: 0.1 },
+				inputModalities: ["text"],
+				maxOutputTokens: null,
+			},
+			{
+				id: "claude-opus-5",
+				reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+				pricing: { inputCost: 5, outputCost: 25, cacheReadCost: 0.5, cacheWriteCost: 6.25, cacheWrite1hCost: 10 },
+				inputModalities: ["text", "image"],
+			},
 		],
 	};
 	const url = `data:application/json,${encodeURIComponent(JSON.stringify(fixture))}`;
-	const models = await loadModels(url);
+	const clientUrl = `data:application/json,${encodeURIComponent(JSON.stringify(clientFixture))}`;
+	const { models, capabilitiesLoaded, capabilitiesError } = await loadCatalog(url, clientUrl);
 
-	assert.equal(models.length, 4);
+	assert.equal(capabilitiesLoaded, true);
+	assert.equal(capabilitiesError, undefined);
+	assert.equal(models.length, 7);
 	assert.deepEqual(
 		models.map(({ id, api, reasoning, input }) => ({ id, api, reasoning, input })),
 		[
@@ -92,12 +143,63 @@ async function testModelMapping(): Promise<void> {
 				reasoning: true,
 				input: ["text", "image"],
 			},
+			{ id: "meta/muse-ember", api: "openai-completions", reasoning: true, input: ["text", "image"] },
+			{ id: "gpt-6-sol", api: "openai-responses", reasoning: true, input: ["text", "image"] },
+			{ id: "moonshotai/Kimi-K2.6", api: "openai-completions", reasoning: true, input: ["text"] },
 		],
 	);
 	assert.equal(models[0]?.contextWindow, 200_000);
 	assert.equal(models[3]?.maxTokens, 8_192);
 	assert.deepEqual(models[0]?.compat, { forceAdaptiveThinking: true });
 	assert.deepEqual(models[2]?.compat, { supportsDeveloperRole: false, maxTokensField: "max_tokens" });
+
+	// The capability view supplies thinking levels, prices and output caps.
+	const muse = models.find((model) => model.id === "meta/muse-ember");
+	assert.deepEqual(muse?.thinkingLevelMap, {
+		off: null,
+		minimal: null,
+		low: "low",
+		medium: "medium",
+		high: "high",
+		xhigh: "xhigh",
+		max: "max",
+	});
+	assert.deepEqual(muse?.cost, { input: 0.1, output: 0.5, cacheRead: 0.004, cacheWrite: 0 });
+	assert.equal(muse?.maxTokens, 32_768); // maxOutputTokens: null falls back
+
+	const sol = models.find((model) => model.id === "gpt-6-sol");
+	assert.deepEqual(sol?.thinkingLevelMap, {
+		off: "off",
+		minimal: null,
+		low: null,
+		medium: null,
+		high: "high",
+		xhigh: null,
+		max: "max",
+	});
+	assert.deepEqual(sol?.cost, {
+		input: 2,
+		output: 10,
+		cacheRead: 0.2,
+		cacheWrite: 2.5,
+		tiers: [{ inputTokensAbove: 272_000, input: 4, output: 15, cacheRead: 0.4, cacheWrite: 5 }],
+	});
+
+	const kimi = models.find((model) => model.id === "moonshotai/Kimi-K2.6");
+	assert.equal(kimi?.thinkingLevelMap, undefined); // efforts null = model decides depth
+	assert.deepEqual(kimi?.cost, { input: 1, output: 1, cacheRead: 0.1, cacheWrite: 0 });
+
+	const opus = models.find((model) => model.id === "claude-opus-5");
+	assert.deepEqual(opus?.cost, { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 });
+
+	// A broken capability view still yields routable models, with pi defaults.
+	const degraded = await loadCatalog(url, "data:application/json,{broken");
+	assert.equal(degraded.capabilitiesLoaded, false);
+	assert.ok(degraded.capabilitiesError);
+	assert.equal(degraded.models.length, 7);
+	assert.ok(degraded.models.every((model) => model.thinkingLevelMap === undefined));
+	const degradedMuse = degraded.models.find((model) => model.id === "meta/muse-ember");
+	assert.deepEqual(degradedMuse?.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 }
 
 // ---------------------------------------------------------------------------

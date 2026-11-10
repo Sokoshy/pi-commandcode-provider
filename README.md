@@ -53,6 +53,7 @@ pi --model command-code/claude-sonnet-5:high   # with a thinking level
 | `CMD_API_KEY` | API key, if you would rather not store it with `/login`. `COMMAND_CODE_API_KEY` also works. |
 | `CMD_ZDR` | `1` enforces zero-data-retention routing. |
 | `CMD_MODELS_URL` | Overrides the models endpoint, for staging or a proxy. |
+| `CMD_CLIENT_MODELS_URL` | Overrides the capability-view endpoint; `0` disables it. |
 | `CMD_GENERATE_BASE_URL` | Overrides the `/alpha/generate` base, for tests or mocks. Defaults to `https://api.commandcode.ai`. |
 
 ## Zero data retention
@@ -74,6 +75,19 @@ The chosen transport is remembered per key, and changing the key resets it. The 
 When a thinking level is selected on a reasoning model, `reasoning_effort` is sent verbatim.
 
 Transport ported from [`patlux/pi-commandcode-provider`](https://github.com/patlux/pi-commandcode-provider) v0.7.1 (commit `6fd0ac7`), Copyright (c) 2025 Pat Woz, MIT License. The full permission notice is in [`NOTICE`](NOTICE).
+
+## Thinking levels
+
+pi exposes the levels `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max` per model, controlled by the model's `thinkingLevelMap`. `xhigh` and `max` are hidden unless that map defines them, and any level mapped to `null` is hidden.
+
+This extension builds each model's map from the Command Code capability view (`reasoningEfforts` per model): the efforts Command Code lists become the same-named pi levels, and every pi level not in the list becomes `null` (hidden), including `minimal`, which no Command Code model exposes. A model whose `reasoningEfforts` is `null` (Kimi K2.x, Qwen 3.6/3.7, GLM-5.2-Fast, …) gets no map, so pi's default map applies unchanged.
+
+- Muse Ember → `low`, `medium`, `high`, `xhigh`, `max`
+- Claude (Opus/Sonnet/Fable/Haiku 4.6 and later) → `low` through `max`
+- DeepSeek → `off` plus family-specific levels — the only Command Code models exposing `off`
+- GLM → family-dependent; GLM-5.2 is `high` and `max` only
+
+If the capability view fails, pi's default map applies and pi shows a warning at session start (see [Where prices, modalities and thinking levels come from](#where-prices-modalities-and-thinking-levels-come-from)). To widen or pin a model's levels yourself, use `modelOverrides` for this provider in `~/.pi/agent/models.json` with a `thinkingLevelMap` — user overrides are applied last, so they win.
 
 ## License and attribution
 
@@ -106,24 +120,18 @@ pi --extension ./pi-commandcode-provider/index.ts
 </details>
 
 <details>
-<summary>Why cost shows $0</summary>
+<summary>Where prices, modalities and thinking levels come from</summary>
 
-`/provider/v1/models` returns ids, names, context windows and routes, but no prices. Nothing here is hardcoded to fill that gap, so pi reports `$0` per model and session totals are not meaningful. Real prices are at [commandcode.ai/models](https://commandcode.ai/models).
+pi would report `$0` per model from the public `GET /provider/v1/models` catalog alone, because that endpoint returns ids, names, context windows and routes but no prices or capability flags. At startup this extension also fetches the capability view the Command Code CLI reads (`GET /provider/v1/models?view=client`) and merges it by model id:
 
-The fix is additive and lives in the API. If the endpoint starts returning any of `pricing`, `max_output_tokens`, `modalities` or `reasoning` per model, this extension already prefers them:
+| Capability view field | Used for |
+|-----------------------|----------|
+| `reasoningEfforts` | the model's `thinkingLevelMap` |
+| `pricing` (incl. `contextTiers`) | the model's `cost` (USD per million tokens) |
+| `inputModalities` | `text`/`image` input |
+| `maxOutputTokens` | the model's `maxTokens` |
 
-```json
-{
-  "id": "claude-sonnet-5",
-  "pricing": { "input": 2, "output": 10, "cache_read": 0.2, "cache_write": 2.5 },
-  "max_output_tokens": 128000,
-  "modalities": { "input": ["text", "image"] },
-  "reasoning": true
-}
-```
-
-Until then, `reasoning` and vision come from compatibility defaults. Models are assumed to support reasoning, preserving the provider's existing behavior. `claude-*`, `gpt-*` and `google/*` also take images; unknown families remain text-only. Context window comes from `context_length`, and max output defaults to 32K.
-
+Nothing is hardcoded. If the capability view is unreachable or changes shape, the provider still loads from the public catalog — routing and context windows work, thinking levels use pi's defaults, and pi reports `$0` prices — and a warning is shown at session start. Set `CMD_CLIENT_MODELS_URL=0` to disable the capability view explicitly, or point it at a mirror with `CMD_CLIENT_MODELS_URL=https://…`.
 </details>
 
 <details>
