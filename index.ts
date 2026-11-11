@@ -2,20 +2,18 @@
  * Modified in 2026 by Sokoshy: added the Go-plan fallback transport and its
  * router. Originally Copyright 2026 Command Code, Apache License 2.0 —
  * see the LICENSE and NOTICE files.
+ * The model list (and the route for each model) comes from
+ * https://api.commandcode.ai/provider/v1/models at startup, merged by id with
+ * the capability view — reasoning efforts, prices, modalities, output caps —
+ * from the same endpoint with `?view=client`. No part of the catalog is
+ * hardcoded, so new Command Code models appear without a change here.
+ * Known families have temporary fallbacks until the endpoints supply the data.
+ * If the capability view fails the provider still loads with default thinking
+ * levels and $0 prices, and reports a warning at session start.
  *
- * Unofficial fork of the Command Code provider for pi. Requires pi 0.86 or
- * newer for the stable native-provider exports used below.
- *
- * The model list and the route for each model come from
- * https://api.commandcode.ai/provider/v1/models at startup. No part of the
- * catalog is hardcoded, so new Command Code models appear without a change
- * here. Capability metadata comes from the endpoint when available; known
- * families have temporary fallbacks until the endpoint supplies it.
- *
- * That endpoint returns ids, names, context windows and routes, but no prices,
- * so pi reports $0 per model. `toModel` already reads `pricing`,
- * `max_output_tokens`, `modalities` and `reasoning`, so the API can close that
- * gap on its own. See https://commandcode.ai/models for the real prices.
+ * The public endpoint returns ids, names, context windows and routes; prices
+ * live in the capability view, so pi reports real costs once both fetches
+ * succeed.
  *
  * Usage:
  *   pi install git:git@github.com:Sokoshy/pi-commandcode-provider
@@ -29,6 +27,8 @@ import {
 	type Api,
 	type AssistantMessageEventStream,
 	type Model,
+	type ModelCost,
+	type ThinkingLevelMap,
 	type Provider,
 	type ProviderEnv,
 	type ProviderStreams,
@@ -59,6 +59,8 @@ const ZDR_HEADER = "x-cmd-zdr";
 const ZDR_ENV = "CMD_ZDR";
 const MODELS_URL_ENV = "CMD_MODELS_URL";
 const GENERATE_BASE_URL_ENV = "CMD_GENERATE_BASE_URL";
+const CLIENT_MODELS_URL = `${OPENAI_BASE_URL}/models?view=client`;
+const CLIENT_MODELS_URL_ENV = "CMD_CLIENT_MODELS_URL";
 const NO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const FALLBACK_MAX_TOKENS = 32_768;
 const FALLBACK_CONTEXT_WINDOW = 131_072;
@@ -77,6 +79,81 @@ interface CommandCodeModelListItem {
 	max_output_tokens?: number;
 	modalities?: { input?: string[] };
 	reasoning?: boolean;
+}
+
+/**
+ * Pricing block from the capability view. USD per million tokens.
+ * `contextTiers` carries the same rates with increasing `maxContext`; the
+ * entry without `maxContext` applies above the previous boundary.
+ */
+interface CommandCodePricingRates {
+	inputCost?: number;
+	outputCost?: number;
+	cacheReadCost?: number;
+	cacheWriteCost?: number;
+}
+interface CommandCodePricing extends CommandCodePricingRates {
+	cacheWrite1hCost?: number;
+	contextTiers?: { maxContext?: number; rates?: CommandCodePricingRates }[];
+}
+
+/**
+ * One entry from /provider/v1/models?view=client, the capability view the
+ * Command Code CLI reads at startup. Not documented upstream and may change
+ * shape without notice, so every field is optional and the merge degrades to
+ * public-endpoint metadata when the view fails.
+ */
+interface CommandCodeClientModelItem {
+	id: string;
+	name?: string;
+	context_length?: number;
+	reasoningEfforts?: string[] | null;
+	pricing?: CommandCodePricing;
+	inputModalities?: string[];
+	maxOutputTokens?: number | null;
+	behaviorProfile?: string;
+	minimumPlan?: string;
+}
+
+/** pi's extended thinking levels; xhigh and max are hidden unless the map defines them. */
+const MODEL_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Map the registry's reasoning efforts onto pi levels; efforts outside the registry are hidden. */
+function thinkingLevelMapFromEfforts(efforts: string[]): ThinkingLevelMap {
+	const supported = new Set(efforts);
+	const map: ThinkingLevelMap = {};
+	for (const level of MODEL_THINKING_LEVELS) map[level] = supported.has(level) ? level : null;
+	return map;
+}
+
+function costRates(rates: CommandCodePricingRates | undefined) {
+	return {
+		input: rates?.inputCost ?? 0,
+		output: rates?.outputCost ?? 0,
+		cacheRead: rates?.cacheReadCost ?? 0,
+		cacheWrite: rates?.cacheWriteCost ?? 0,
+	};
+}
+
+function tiersFromContextTiers(rows?: CommandCodePricing["contextTiers"]) {
+	if (!Array.isArray(rows) || rows.length < 2) return undefined;
+	const tiers: { inputTokensAbove: number; input: number; output: number; cacheRead: number; cacheWrite: number }[] = [];
+	let previousBoundary: number | undefined;
+	for (const row of rows) {
+		if (!row) continue;
+		if (previousBoundary !== undefined && row.rates) {
+			tiers.push({ inputTokensAbove: previousBoundary, ...costRates(row.rates) });
+		}
+		if (typeof row.maxContext === "number") previousBoundary = row.maxContext;
+	}
+	return tiers.length > 0 ? tiers : undefined;
+}
+
+/** USD-per-million base rates, plus request-wide tiers for long-context pricing when the registry prices it higher. */
+function costFromPricing(pricing: CommandCodePricing): ModelCost {
+	const base = costRates(pricing);
+	const tiers = tiersFromContextTiers(pricing.contextTiers);
+	return tiers ? { ...base, tiers } : base;
 }
 
 /**
@@ -100,7 +177,7 @@ function envValue(name: string, env?: ProviderEnv): string | undefined {
 	return env?.[name] || (typeof process !== "undefined" ? process.env[name] : undefined) || undefined;
 }
 
-function toModel(item: CommandCodeModelListItem): Model<Api> | undefined {
+function toModel(item: CommandCodeModelListItem, clientItem?: CommandCodeClientModelItem): Model<Api> | undefined {
 	const endpoints = item.supported_endpoints ?? [];
 	// Claude answers on /messages only and returns 400 on any other route.
 	// OpenAI ids go to Responses. Everything else uses Chat Completions.
@@ -116,25 +193,31 @@ function toModel(item: CommandCodeModelListItem): Model<Api> | undefined {
 	if (!api) return undefined;
 
 	const family = FAMILIES.find((entry) => entry.match.test(item.id));
-	const vision = item.modalities?.input ? item.modalities.input.includes("image") : (family?.vision ?? false);
-	const model: Model<Api> = {
-		id: item.id,
-		name: item.name || item.id,
-		api,
-		provider: PROVIDER_ID,
-		baseUrl: api === "anthropic-messages" ? BASE_URL : OPENAI_BASE_URL,
-		reasoning: item.reasoning ?? family?.reasoning ?? true,
-		input: vision ? ["text", "image"] : ["text"],
-		cost: item.pricing
+	// The capability view reports modalities as a flat list ("text", "image",
+	// "file"); pi models only carry text/image, so "file" is dropped here.
+	const modalities = clientItem?.inputModalities ?? item.modalities?.input;
+	const vision = Array.isArray(modalities) ? modalities.includes("image") : (family?.vision ?? false);
+	const cost: ModelCost = clientItem?.pricing
+		? costFromPricing(clientItem.pricing)
+		: item.pricing
 			? {
 					input: item.pricing.input ?? 0,
 					output: item.pricing.output ?? 0,
 					cacheRead: item.pricing.cache_read ?? 0,
 					cacheWrite: item.pricing.cache_write ?? 0,
 				}
-			: NO_COST,
-		contextWindow: item.context_length || FALLBACK_CONTEXT_WINDOW,
-		maxTokens: item.max_output_tokens || FALLBACK_MAX_TOKENS,
+			: NO_COST;
+	const model: Model<Api> = {
+		id: item.id,
+		name: clientItem?.name || item.name || item.id,
+		api,
+		provider: PROVIDER_ID,
+		baseUrl: api === "anthropic-messages" ? BASE_URL : OPENAI_BASE_URL,
+		reasoning: item.reasoning ?? family?.reasoning ?? true,
+		input: vision ? ["text", "image"] : ["text"],
+		cost,
+		contextWindow: item.context_length || clientItem?.context_length || FALLBACK_CONTEXT_WINDOW,
+		maxTokens: clientItem?.maxOutputTokens || item.max_output_tokens || FALLBACK_MAX_TOKENS,
 		// CMD_ZDR=1 enforces zero-data-retention routing, the same switch the
 		// Command Code CLI has. The gateway then serves the request from a
 		// zero-data-retention upstream, or fails with 422 instead of using an
@@ -142,6 +225,14 @@ function toModel(item: CommandCodeModelListItem): Model<Api> | undefined {
 		// is the field pi merges into each request.
 		...(envValue(ZDR_ENV) === "1" ? { headers: { [ZDR_HEADER]: "1" } } : {}),
 	};
+	if (Array.isArray(clientItem?.reasoningEfforts)) {
+		// The registry lists exactly the efforts the model accepts; map every
+		// pi level so xhigh/max become visible (pi hides them otherwise) and
+		// unsupported levels such as minimal drop out.
+		model.thinkingLevelMap = thinkingLevelMapFromEfforts(clientItem.reasoningEfforts);
+	}
+	// reasoningEfforts === null means the model picks its own depth (Kimi
+	// K2.x, Qwen 3.6/3.7, ...). pi's default map applies unchanged.
 
 	if (api === "openai-completions") {
 		// Several upstreams behind this route reject the `developer` role that pi
@@ -153,12 +244,54 @@ function toModel(item: CommandCodeModelListItem): Model<Api> | undefined {
 	return model;
 }
 
-export async function loadModels(url = MODELS_URL, signal?: AbortSignal): Promise<Model<Api>[]> {
+export interface LoadCatalogResult {
+	models: Model<Api>[];
+	/** true when the capability view was fetched and merged. */
+	capabilitiesLoaded: boolean;
+	/** why the capability view is missing, when it is (the public catalog still loads). */
+	capabilitiesError?: string;
+}
+
+/**
+ * Load the public catalog (routing) and, unless `clientUrl` is null, the
+ * capability view — reasoning efforts, prices, modalities, output caps — and
+ * merge the two by id. Throws when the public catalog cannot be fetched; the
+ * capability view degrades to a missing-metadata warning so pi still starts.
+ */
+export async function loadCatalog(
+	url = MODELS_URL,
+	clientUrl: string | null = CLIENT_MODELS_URL,
+	signal?: AbortSignal,
+): Promise<LoadCatalogResult> {
 	const response = await fetch(url, { signal: signal ?? AbortSignal.timeout(MODELS_TIMEOUT_MS) });
 	if (!response.ok) throw new Error(`Command Code /models returned ${response.status}`);
 	const body = (await response.json()) as { data?: CommandCodeModelListItem[] };
 	const items = Array.isArray(body.data) ? body.data : [];
-	return items.map(toModel).filter((model): model is Model<Api> => model !== undefined);
+
+	let clients: Map<string, CommandCodeClientModelItem> | undefined;
+	let capabilitiesError: string | undefined;
+	if (clientUrl) {
+		try {
+			const clientResponse = await fetch(clientUrl, { signal: signal ?? AbortSignal.timeout(MODELS_TIMEOUT_MS) });
+			if (!clientResponse.ok) throw new Error(`Command Code /models?view=client returned ${clientResponse.status}`);
+			const clientBody = (await clientResponse.json()) as { data?: CommandCodeClientModelItem[] };
+			const clientItems = Array.isArray(clientBody.data) ? clientBody.data : [];
+			clients = new Map(
+				clientItems.filter((entry) => entry && typeof entry.id === "string").map((entry) => [entry.id, entry]),
+			);
+		} catch (error) {
+			capabilitiesError = error instanceof Error ? error.message : String(error);
+		}
+	}
+	const models = items
+		.map((item) => toModel(item, clients?.get(item.id)))
+		.filter((model): model is Model<Api> => model !== undefined);
+	return { models, capabilitiesLoaded: clients !== undefined, capabilitiesError };
+}
+
+export async function loadModels(url = MODELS_URL, signal?: AbortSignal): Promise<Model<Api>[]> {
+	const result = await loadCatalog(url, CLIENT_MODELS_URL, signal);
+	return result.models;
 }
 
 export function commandCodeProvider(models: Model<Api>[]): Provider<Api> {
@@ -239,7 +372,21 @@ export default async function activate(pi: ExtensionAPI): Promise<void> {
 		return normalized ? { message: normalized.message } : undefined;
 	});
 	try {
-		pi.registerProvider(commandCodeProvider(await loadModels(envValue(MODELS_URL_ENV) ?? MODELS_URL)));
+		const clientEnv = envValue(CLIENT_MODELS_URL_ENV);
+		const clientUrl = clientEnv && /^(0|off|false|disable)$/i.test(clientEnv) ? null : (clientEnv ?? CLIENT_MODELS_URL);
+		const result = await loadCatalog(envValue(MODELS_URL_ENV) ?? MODELS_URL, clientUrl);
+		if (!result.capabilitiesLoaded) {
+			// The public catalog alone is enough to route requests; only the
+			// capability metadata (thinking levels, prices) is missing.
+			const detail = result.capabilitiesError ? ` (${result.capabilitiesError})` : "";
+			pi.on("session_start", async (_event, ctx) => {
+				ctx.ui.notify(
+					`Command Code: capability metadata unavailable${detail}; thinking levels and prices fall back to defaults.`,
+					"warning",
+				);
+			});
+		}
+		pi.registerProvider(commandCodeProvider(result.models));
 	} catch (error) {
 		// No catalog means no models. Report that instead of registering an
 		// empty provider.
